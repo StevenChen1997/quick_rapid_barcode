@@ -1,7 +1,8 @@
 # quick_rapid_barcode
 
 A minimal 1D/2D barcode generator in C++ (CLI).
-This project is a prototype within AI vibe coding assistance.
+
+This project is assisted by AI and vibe coding tools.
 
 ## Build
 
