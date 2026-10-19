@@ -27,16 +27,17 @@ endif
 
 SRCS := $(wildcard src/*.cpp)
 OBJS := $(SRCS:.cpp=.o)
+HEADERS := $(wildcard src/*.h)
 
 all: qrb
 
 qrb: $(OBJS) $(CUDA_OBJS)
 	$(LINKER) -o $@ $^ $(LDFLAGS)
 
-%.o: %.cpp
+%.o: %.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-%.o: %.cu
+%.o: %.cu $(HEADERS)
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 clean:

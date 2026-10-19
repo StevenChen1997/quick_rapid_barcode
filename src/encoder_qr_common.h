@@ -15,7 +15,33 @@ struct QrSpec {
     int size;
     int dataCodewords;
     int eccCodewords;
+    int blocks;
 };
+
+// QR version geometry and ECC-L tables adapted from Project Nayuki (MIT).
+// See THIRD_PARTY_NOTICES.md for attribution and license.
+inline QrSpec qr_spec(int version) {
+    static const int ecc[] = {
+        0, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22,
+        24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30,
+        30, 30, 30, 30, 30, 30, 30, 30, 30, 30
+    };
+    static const int blocks[] = {
+        0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6,
+        6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15,
+        16, 17, 18, 19, 19, 20, 21, 22, 24, 25
+    };
+    int modules = (16 * version + 128) * version + 64;
+    if (version >= 2) {
+        int count = version / 7 + 2;
+        modules -= (25 * count - 10) * count - 55;
+    }
+    if (version >= 7) {
+        modules -= 36;
+    }
+    return {version, version * 4 + 17,
+            modules / 8 - ecc[version] * blocks[version], ecc[version], blocks[version]};
+}
 
 struct QrBase {
     ModuleMatrix m;
@@ -167,28 +193,34 @@ inline void apply_format_bits(ModuleMatrix &m, std::vector<uint8_t> &isFunc, int
     }
 }
 
-inline bool build_qr_base(const std::string &input, QrBase &out, std::string &err) {
-    static const QrSpec specs[] = {
-        {1, 21, 19, 7},
-        {2, 25, 34, 10},
-        {3, 29, 55, 15},
-        {4, 33, 80, 20},
-    };
-
-    const QrSpec *spec = nullptr;
-    int data_len = static_cast<int>(input.size());
-    for (const auto &s : specs) {
-        int capacityBits = s.dataCodewords * 8;
-        int needed = 4 + 8 + data_len * 8;
-        if (needed <= capacityBits) {
-            spec = &s;
+inline bool build_qr_base(const std::string &input, QrBase &out, std::string &err,
+                          int requested_version = 0) {
+    if (requested_version < 0 || requested_version > 40) {
+        err = "QR version must be 0 (auto) or 1-40";
+        return false;
+    }
+    if (input.size() > 2953) {
+        err = "QR byte mode at ECC L supports up to 2953 bytes (version 40)";
+        return false;
+    }
+    QrSpec selected{};
+    const int data_len = static_cast<int>(input.size());
+    for (int v = requested_version ? requested_version : 1; v <= 40; ++v) {
+        QrSpec candidate = qr_spec(v);
+        int needed = 4 + (v < 10 ? 8 : 16) + data_len * 8;
+        if (needed <= candidate.dataCodewords * 8) {
+            selected = candidate;
+            break;
+        }
+        if (requested_version) {
             break;
         }
     }
-    if (!spec) {
-        err = "QR L supports up to 80 bytes (version 1-4)";
+    if (!selected.version) {
+        err = "Input does not fit requested QR version; use --qr-version 0 for auto";
         return false;
     }
+    const QrSpec *spec = &selected;
 
     std::vector<int> bits;
     auto append_bits_n = [&](int val, int n) {
@@ -198,7 +230,7 @@ inline bool build_qr_base(const std::string &input, QrBase &out, std::string &er
     };
 
     append_bits_n(0x4, 4); // byte mode
-    append_bits_n(data_len, 8);
+    append_bits_n(data_len, spec->version < 10 ? 8 : 16);
     for (unsigned char c : input) {
         append_bits_n(c, 8);
     }
@@ -227,10 +259,31 @@ inline bool build_qr_base(const std::string &input, QrBase &out, std::string &er
 
     gf_init();
     std::vector<uint8_t> gen = rs_generator(spec->eccCodewords);
-    std::vector<uint8_t> ecc = rs_remainder(data, gen);
-
-    std::vector<uint8_t> all = data;
-    all.insert(all.end(), ecc.begin(), ecc.end());
+    // Split into short/long blocks, then interleave data and ECC separately.
+    std::vector<std::vector<uint8_t>> blocks;
+    std::vector<std::vector<uint8_t>> parity;
+    int short_size = spec->dataCodewords / spec->blocks;
+    int short_count = spec->blocks - spec->dataCodewords % spec->blocks;
+    size_t offset = 0;
+    for (int i = 0; i < spec->blocks; ++i) {
+        int length = short_size + (i >= short_count ? 1 : 0);
+        blocks.emplace_back(data.begin() + offset, data.begin() + offset + length);
+        parity.push_back(rs_remainder(blocks.back(), gen));
+        offset += length;
+    }
+    std::vector<uint8_t> all;
+    for (int column = 0; column <= short_size; ++column) {
+        for (const auto &block : blocks) {
+            if (column < static_cast<int>(block.size())) {
+                all.push_back(block[column]);
+            }
+        }
+    }
+    for (int column = 0; column < spec->eccCodewords; ++column) {
+        for (const auto &block : parity) {
+            all.push_back(block[column]);
+        }
+    }
 
     int size = spec->size;
     ModuleMatrix m(size, size, 0);
@@ -240,23 +293,47 @@ inline bool build_qr_base(const std::string &input, QrBase &out, std::string &er
     draw_finder(m, isFunc, size - 7, 0);
     draw_finder(m, isFunc, 0, size - 7);
 
-    if (spec->version >= 2) {
-        int pos[2] = {6, size - 7};
-        for (int y : pos) {
-            for (int x : pos) {
-                if (isFunc[static_cast<size_t>(y * size + x)]) {
-                    continue;
-                }
-                draw_alignment(m, isFunc, x, y);
-            }
-        }
-    }
-
     for (int i = 8; i < size - 8; ++i) {
         m.set(i, 6, (i % 2 == 0) ? 1 : 0);
         m.set(6, i, (i % 2 == 0) ? 1 : 0);
         isFunc[static_cast<size_t>(6 * size + i)] = 1;
         isFunc[static_cast<size_t>(i * size + 6)] = 1;
+    }
+
+    if (spec->version >= 2) {
+        int count = spec->version / 7 + 2;
+        int step = (spec->version * 8 + count * 3 + 5) / (count * 4 - 4) * 2;
+        std::vector<int> positions(count, 6);
+        for (int i = count - 1; i >= 1; --i) {
+            positions[i] = size - 7 - (count - 1 - i) * step;
+        }
+        for (int y = 0; y < count; ++y) {
+            for (int x = 0; x < count; ++x) {
+                if ((x == 0 && (y == 0 || y == count - 1))
+                    || (y == 0 && x == count - 1)) {
+                    continue;
+                }
+                draw_alignment(m, isFunc, positions[x], positions[y]);
+            }
+        }
+    }
+    if (spec->version >= 7) {
+        int remainder = spec->version << 12;
+        for (int bit = 17; bit >= 12; --bit) {
+            if ((remainder >> bit) & 1) {
+                remainder ^= 0x1F25 << (bit - 12);
+            }
+        }
+        int version_bits = (spec->version << 12) | remainder;
+        for (int bit = 0; bit < 18; ++bit) {
+            int x = size - 11 + bit % 3;
+            int y = bit / 3;
+            uint8_t value = (version_bits >> bit) & 1;
+            m.set(x, y, value);
+            m.set(y, x, value);
+            isFunc[static_cast<size_t>(y * size + x)] = 1;
+            isFunc[static_cast<size_t>(x * size + y)] = 1;
+        }
     }
 
     m.set(8, size - 8, 1);

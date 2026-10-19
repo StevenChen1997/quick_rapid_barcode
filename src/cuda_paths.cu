@@ -198,13 +198,13 @@ ModuleMatrix linear_to_matrix_cuda(const std::vector<uint8_t> &modules, int heig
     return mat;
 }
 
-ModuleMatrix encode_qr_cuda(const std::string &input, std::string &err) {
+ModuleMatrix encode_qr_cuda(const std::string &input, std::string &err, int version) {
     if (!ensure_cuda_device(err)) {
         return {};
     }
 
     qr_internal::QrBase base;
-    if (!qr_internal::build_qr_base(input, base, err)) {
+    if (!qr_internal::build_qr_base(input, base, err, version)) {
         return {};
     }
 

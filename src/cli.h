@@ -7,7 +7,10 @@ struct Options {
     std::string sym;
     std::string outPath;
     std::string format;
+    std::string terminal_mode = "auto";
     int scale = 4;
+    int qr_version = 0;
+    int terminal_scale = 1;
     int height = 5;
     int quiet = 10;
     int hscale = 1;

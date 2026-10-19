@@ -181,14 +181,14 @@ int main(int argc, char **argv) {
     } else if (sym == "qr") {
         if (use_cuda) {
 #ifdef USE_CUDA
-            mat = encode_qr_cuda(opt.text, err);
+            mat = encode_qr_cuda(opt.text, err, opt.qr_version);
 #endif
         } else if (use_sse) {
 #ifdef USE_SSE
-            mat = encode_qr_sse(opt.text, err);
+            mat = encode_qr_sse(opt.text, err, opt.qr_version);
 #endif
         } else {
-            mat = encode_qr(opt.text, err);
+            mat = encode_qr(opt.text, err, opt.qr_version);
         }
     } else {
         std::cerr << "Unknown symbology: " << sym << "\n";
@@ -205,7 +205,10 @@ int main(int argc, char **argv) {
             std::cerr << "ASCII output is supported for QR only; use png/jpg for 1D barcodes\n";
             return 1;
         }
-        render_ascii(mat, opt.hscale, opt.half_height);
+        if (!render_ascii(mat, opt.hscale, opt.half_height, opt.terminal_mode, err, opt.terminal_scale)) {
+            std::cerr << err << "\n";
+            return 1;
+        }
         return 0;
     }
 

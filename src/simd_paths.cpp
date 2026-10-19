@@ -103,9 +103,9 @@ ModuleMatrix linear_to_matrix_sse(const std::vector<uint8_t> &modules, int heigh
     return mat;
 }
 
-ModuleMatrix encode_qr_sse(const std::string &input, std::string &err) {
+ModuleMatrix encode_qr_sse(const std::string &input, std::string &err, int version) {
     qr_internal::QrBase base;
-    if (!qr_internal::build_qr_base(input, base, err)) {
+    if (!qr_internal::build_qr_base(input, base, err, version)) {
         return {};
     }
     if (!apply_mask_sse(base.m, base.isFunc, err)) {
