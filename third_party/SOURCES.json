@@ -1,0 +1,12 @@
+{
+  "zxing": {
+    "version": "2.3.0",
+    "url": "https://codeload.github.com/zxing-cpp/zxing-cpp/tar.gz/refs/tags/v2.3.0",
+    "archive_sha256": "64e4139103fdbc57752698ee15b5f0b0f7af9a0331ecbdc492047e0772c417ba"
+  },
+  "stb_image": {
+    "commit": "2c980bb59875b0d32144a71867fbdebb2f77cd20",
+    "url": "https://raw.githubusercontent.com/nothings/stb/2c980bb59875b0d32144a71867fbdebb2f77cd20/stb_image.h",
+    "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"
+  }
+}

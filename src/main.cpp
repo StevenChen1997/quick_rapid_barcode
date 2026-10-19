@@ -1,4 +1,7 @@
 #include "cli.h"
+#include "decoder.h"
+#include "encoder_pdf417.h"
+#include "file_io.h"
 #include "encoder_qr.h"
 #include "encoders_1d.h"
 #include "output_jpg.h"
@@ -27,13 +30,25 @@ int main(int argc, char **argv) {
 
     if (!parse_args(argc, argv, opt, err)) {
         std::cerr << err << "\n";
-        print_usage();
         return 1;
     }
 
     if (opt.show_help) {
         print_usage();
         return 0;
+    }
+
+    if (!opt.decode_path.empty()) {
+        std::string payload;
+        if (!decode_image(opt.decode_path, payload, err) || !write_payload(opt.outPath, payload, err)) {
+            std::cerr << err << "\n";
+            return 1;
+        }
+        return 0;
+    }
+    if (!opt.input_file.empty() && !read_file(opt.input_file, opt.text, 1024 * 1024, err)) {
+        std::cerr << err << "\n";
+        return 1;
     }
 
     if (opt.text.empty() || opt.sym.empty()) {
@@ -178,6 +193,8 @@ int main(int argc, char **argv) {
         } else {
             mat = linear_to_matrix(bits, opt.height, opt.quiet);
         }
+    } else if (sym == "pdf417") {
+        mat = encode_pdf417(opt.text, opt.pdf417_columns, opt.pdf417_ecc, err);
     } else if (sym == "qr") {
         if (use_cuda) {
 #ifdef USE_CUDA
@@ -202,7 +219,7 @@ int main(int argc, char **argv) {
 
     if (format == "ascii") {
         if (sym != "qr") {
-            std::cerr << "ASCII output is supported for QR only; use png/jpg for 1D barcodes\n";
+            std::cerr << "ASCII output is supported for QR only; use png/jpg for PDF417 and 1D barcodes\n";
             return 1;
         }
         if (!render_ascii(mat, opt.hscale, opt.half_height, opt.terminal_mode, err, opt.terminal_scale)) {
@@ -223,6 +240,12 @@ int main(int argc, char **argv) {
     }
 
     int margin = (sym == "qr") ? 4 : 2;
+    const long long pixel_width = (static_cast<long long>(mat.w) + margin * 2) * opt.scale;
+    const long long pixel_height = (static_cast<long long>(mat.h) + margin * 2) * opt.scale;
+    if (pixel_width > 16384 || pixel_height > 16384 || pixel_width * pixel_height > 16 * 1024 * 1024) {
+        std::cerr << "Output exceeds 16384 pixels per side or 16 megapixels; reduce --scale\n";
+        return 1;
+    }
     Bitmap bmp;
     if (use_cuda) {
 #ifdef USE_CUDA

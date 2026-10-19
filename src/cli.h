@@ -4,6 +4,11 @@
 
 struct Options {
     std::string text;
+    std::string input_file;
+    std::string decode_path;
+    int pdf417_columns = 0;
+    int pdf417_ecc = 2;
+    bool text_set = false;
     std::string sym;
     std::string outPath;
     std::string format;

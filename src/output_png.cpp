@@ -107,5 +107,10 @@ bool write_png(const std::string &path, const Bitmap &bmp, std::string &err) {
 
     write_chunk(out, "IDAT", zlib);
     write_chunk(out, "IEND", {});
+    out.close();
+    if (!out) {
+        err = "Failed to write PNG output";
+        return false;
+    }
     return true;
 }

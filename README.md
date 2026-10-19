@@ -1,13 +1,17 @@
 # quick_rapid_barcode
 
-A minimal 1D/2D barcode generator in C++ (CLI).
+A C++ CLI barcode generator and PNG/JPEG barcode decoder.
 
 This project is assisted by AI and vibe coding tools.
 
 ## Build
 
+Requires a C++17 compiler, Make, and CMake 3.16 or newer. ZXing-C++ and the
+PNG/JPEG reader are vendored at fixed revisions, so builds require no downloads.
+The first build also compiles the barcode library.
+
 ```bash
-make
+make -j4
 ```
 
 JPEG output (optional, requires libjpeg):
@@ -31,11 +35,11 @@ make USE_SSE=1
 ## Usage
 
 ```bash
-./qrb -t "abcdefg1234567" -s code128
-./qrb -t "590123412345" -s ean13
-./qrb -t "01234567890" -s upc
-./qrb -t "HELLO-39" -s code39
-./qrb -t "123456" -s itf
+./qrb -t "abcdefg1234567" -s code128 -o code128.png
+./qrb -t "590123412345" -s ean13 -o ean13.png
+./qrb -t "01234567890" -s upc -o upc.png
+./qrb -t "HELLO-39" -s code39 -o code39.png
+./qrb -t "123456" -s itf -o itf.png
 ./qrb -t "HELLO" -s qr -o out.png -f png
 ./qrb -t "HELLO" -s qr -o out.png -f png --cuda
 ./qrb -t "HELLO" -s qr -o out.png -f png --sse
@@ -44,7 +48,7 @@ make USE_SSE=1
 ### Common options
 
 - `-t <text>` input text
-- `-s <symbology>`: `ean13 | upc | code128 | code39 | itf | qr`
+- `-s <symbology>`: `ean13 | upc | code128 | code39 | itf | qr | pdf417`
 - `-o <file>` output image file
 - `-f <format>`: `ascii | png | jpg`
 - `--scale <n>` image pixel scale (default 4)
@@ -154,3 +158,64 @@ encoder, decode the images with ZXing, and check overflow, auto version selectio
 UTF-8 URLs, and invalid arguments. The normal terminal tests also check integer
 magnification. QR version tables/geometry attribution is in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## PDF417 encoding and image decoding
+
+Encode a string directly, or read an exact UTF-8 payload from a file. Leading and
+trailing spaces, tabs and line breaks are preserved. Invalid UTF-8 is rejected.
+
+```bash
+./qrb -t "YOUR ORIGINAL BOARDING PASS STRING" -s pdf417 -o boarding.png
+./qrb --input-file boarding.txt -s pdf417 -o boarding.png --scale 3
+./qrb --input-file boarding.txt -s pdf417 -o boarding.png --pdf417-columns 6 --pdf417-ecc 2
+```
+
+`--pdf417-columns` is 0 for automatic layout (default), or 1-30 fixed data
+columns. `--pdf417-ecc` accepts 0-8 (default 2); higher levels use more capacity
+for error correction. Capacity depends on text/numeric/byte compaction, columns,
+and ECC. Oversized payloads fail with an error instead of being truncated.
+Rows use the encoder's 4:1 height-to-narrow-module ratio. The image has a
+2-module quiet zone on all sides, and `--scale` magnifies both dimensions.
+PDF417 is image-only (PNG, or JPEG with `USE_LIBJPEG=1`); CLI rendering remains
+QR-only. `--height`, `--quiet` and `--qr-version` do not control PDF417 geometry.
+PDF417 encoding uses the CPU library; optional SSE/CUDA paths can still render
+its bitmap.
+
+Decode a PNG or JPEG to its raw payload:
+
+```bash
+./qrb --decode boarding.png
+./qrb --decode boarding.jpg -o boarding.txt
+# Convert an existing PDF417 into QR without shell whitespace stripping.
+./qrb --decode boarding.png -o boarding.txt
+./qrb --input-file boarding.txt -s qr -o boarding-qr.png
+```
+
+Decoding auto-detects PDF417, QR and other ZXing-supported barcodes. JPEG
+**input** works in the default build; only JPEG **output** needs libjpeg.
+Stdout (or `-o`) receives exact decoded bytes with no added newline or metadata.
+Output can contain control bytes; using `-o` is preferable for archival and
+byte-for-byte comparisons. `--decode` accepts only an image path and optional
+`-o`; generation options must not be mixed with decoding. An unreadable image,
+missing barcode, or multiple detected barcodes produces a nonzero exit status
+and a diagnostic on stderr. Crop images containing multiple barcodes before
+retrying.
+
+Image input is limited to 64 MiB compressed and 16 megapixels decoded; generated
+images also have a 16-megapixel limit and a 16384-pixel limit per side.
+This converts the payload as provided; it does not construct/validate IATA BCBP
+fields, verify airline signatures, or issue a valid boarding pass. Preserve the
+original payload when converting existing boarding passes.
+
+Core integration tests use only Python's standard library:
+
+```bash
+python3 tests/test_pdf417.py
+```
+
+Installing `pillow>=13`, `pdf417gen`, and `zxing-cpp` in the test environment also
+enables independent generation/decoding, JPEG/rotation/transparency, and
+multiple-symbol tests. Python packages are test-only; QRB itself is native C++.
+Third-party versions, download URLs and hashes are recorded in
+`third_party/SOURCES.json`, with licenses in `THIRD_PARTY_NOTICES.md` and the
+vendored sources.

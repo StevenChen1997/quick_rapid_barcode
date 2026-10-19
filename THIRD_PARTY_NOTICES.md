@@ -23,3 +23,21 @@ subject to the following conditions:
   liability, whether in an action of contract, tort or otherwise, arising from,
   out of or in connection with the Software or the use or other dealings in the
   Software.
+
+
+## ZXing-C++ 2.3.0
+
+Vendored core sources in `third_party/zxing-cpp` are used for PDF417 encoding and
+barcode decoding. Upstream: https://github.com/zxing-cpp/zxing-cpp/tree/v2.3.0
+
+License: Apache-2.0, with per-file copyright notices retained. The complete
+license is in `third_party/zxing-cpp/LICENSE`. The library is compiled with the
+legacy C++ writers; no Zint source or runtime dependency is included.
+
+## stb_image
+
+`third_party/stb_image.h` provides PNG/JPEG input. Upstream:
+https://github.com/nothings/stb
+
+Used under its MIT license, included with its copyright notice in the header.
+The exact commit and SHA-256 are recorded in `third_party/SOURCES.json`.
